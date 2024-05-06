@@ -1,28 +1,3 @@
-# almaz_projects
-
-**Ansible/playbooks/**
-
-**_Put_server_on_Zabbix_monitoring.yaml_**
-
-Copies Zabbix agent on a server, installs it, copies templated config file and enabless Zabbix service
-
-**_ipv6_disable_and_reboot_if_needed.yaml_**
-
-Checks if ipv6 is enabled, if it is, disables it and reboots the server, if disabled, does nothing
-
-
-**Ansible/Roles/**
-
-**_Post_deployment_configuration_**
-
-Role configures newly deployed server and does next:
-1. Sets hostname
-2. Sets root password
-3. Adds custom Linux repo
-4. Updates packages
-5. Formats second disk, creates and adjusts new user for backups, gets through LVM settings and mounts the file system to the backup catalog
-6. Adds a script to the crontab
-7. Setups Zabbix monitoring
 
 **Bash/**
 

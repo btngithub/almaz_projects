@@ -1,0 +1,131 @@
+services:
+  postgres:
+    container_name: cardano_postgres
+    hostname: cardano_postgres
+    image: postgres:{{ cardano.postgres.version|d('14.10-alpine') }}
+    environment:
+      - POSTGRES_PASSWORD={{ cardano.postgres_password }}
+      - POSTGRES_USER={{ cardano.postgres.user|d('cardano') }}
+      - POSTGRES_DB={{ cardano.postgres.db_name|d('cardano') }}
+      - POSTGRES_LOGGING=true
+    ports:
+      - {{ cardano.postgres.port|d('5444') }}:5432
+    shm_size: '2gb'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      cardano_net:
+        ipv4_address: "{{ cardano.subnet }}.2"
+    restart: on-failure
+    healthcheck:
+      # Use pg_isready to check postgres is running. Substitute different
+      # user `postgres` if you've setup differently to config/pgpass-mainnet
+      test: ["CMD-SHELL", "pg_isready -U cardano"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: ${POSTGRES_ARGS:--c maintenance_work_mem=1GB -c max_parallel_maintenance_workers=4}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+  cardano-node:
+    container_name: cardano_node
+    image: inputoutput/cardano-node:{{ cardano.node.version|d('latest') }}
+    environment:
+      - NETWORK={{ cardano.network }}
+    volumes:
+      - {{ cardano.basedir }}/node-db:/data/db
+      - {{ cardano.basedir }}/node-ipc:/ipc
+    networks:
+      cardano_net:
+        ipv4_address: "{{ cardano.subnet }}.3"
+    healthcheck:
+      # Ping the EKG port to see if it responds.
+      # Assuming if EKG isn't up then the rest of cardano-node isn't either.
+      test: ["CMD-SHELL", "curl -f 127.0.0.1:12798 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "400k"
+        max-file: "20"
+  cardano-db-sync:
+    container_name: cardano_db_sync
+    image: ghcr.io/intersectmbo/cardano-db-sync:{{ cardano.db_sync.version|d('13.2.0.1') }}
+    environment:
+      - NETWORK={{ cardano.network }}
+      - POSTGRES_PASSWORD={{ cardano.postgres_password }}
+      - POSTGRES_USER={{ cardano.postgres.user|d('cardano') }}
+      - POSTGRES_DB={{ cardano.postgres.db_name|d('cardano') }}
+      - POSTGRES_HOST={{ cardano.postgres.container_name|d('cardano_postgres') }}
+      - POSTGRES_PORT={{ cardano.postgres.port|d('5432') }}
+      - RESTORE_RECREATE_DB=N
+    depends_on:
+      cardano-node:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - {{ cardano.basedir }}/db-sync-data:/var/lib/cexplorer
+      - {{ cardano.basedir }}/node-ipc:/node-ipc
+    networks:
+      cardano_net:
+        ipv4_address: "{{ cardano.subnet }}.4"
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+  cardano-rosetta-server:
+    container_name: cardano_rossetta
+    image: inputoutput/cardano-rosetta:{{ cardano.rosetta.version|d('2.1.0-preprod') }}
+    environment:
+      - BIND_ADDRESS=0.0.0.0
+      - CARDANO_CLI_PATH=/usr/local/bin/cardano-cli
+      - CARDANO_NODE_PATH=/usr/local/bin/cardano-node
+      - CARDANO_NODE_SOCKET_PATH=/node-ipc/node.socket
+      - DB_CONNECTION_STRING=postgresql://cardano:zaiQu5eeroquu0OowaeYahquie7ea7ph@cardano_postgres:5432/cardano
+      - DEFAULT_RELATIVE_TTL=1000
+      - GENESIS_SHELLEY_PATH=/config/genesis/shelley.json
+      - LOGGER_LEVEL=debug
+      - PAGE_SIZE=30
+      - PORT=8080
+      - TOPOLOGY_FILE_PATH=/config/cardano-node/topology.json
+      - DEFAULT_POOL_DEPOSIT=500000000
+      - DEFAULT_KEY_DEPOSIT=2000000
+    ports:
+      - {{ cardano.rosetta.port|d('9080') }}:8080
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    volumes:
+      - {{ cardano.rootdir }}/config/{{ cardano.network }}:/config
+      - {{ cardano.basedir }}/node-ipc:/node-ipc
+    networks:
+      cardano_net:
+        ipv4_address: "{{ cardano.subnet }}.5"
+networks:
+  cardano_net:
+    name: cardano
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: '{{ cardano.subnet }}.0/24'
+    driver_opts:
+      com.docker.network.bridge.name: br_cardano
+      com.docker.network.bridge.enable_ip_masquerade: 'true'
+volumes:
+  postgres-data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/mnt/data/cardano/postgres-data'

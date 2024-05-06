@@ -1,4 +1,4 @@
-# almaz_projects
+# almaz_and_alexei_projects
 
 **Ansible/playbooks/**
 

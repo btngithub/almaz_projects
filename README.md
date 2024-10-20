@@ -1,1 +1,1 @@
-Please check individual readme files located in the folders for details
+My projects for bash, python and docker
